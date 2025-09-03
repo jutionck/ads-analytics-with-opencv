@@ -1,0 +1,115 @@
+<html>
+<head>
+    <meta charset='utf-8'>
+    <title>Ads Analytics – Report</title>
+    <meta http-equiv='refresh' content='{{ refresh_ms / 1000 }}'>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 12px;
+            background: #fdfdfd;
+            color: #333;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+        }
+        h2 {
+            border-bottom: 2px solid #eee;
+            padding-bottom: 8px;
+            margin-top: 25px;
+        }
+        .legend {
+            font-size: 14px;
+            background: #fafafa;
+            padding: 12px;
+            border: 1px solid #eee;
+            margin: 8px 0 20px 0;
+            border-radius: 4px;
+        }
+        .legend ul {
+            padding-left: 20px;
+            list-style-type: square;
+        }
+        .legend b {
+            color: #111;
+        }
+        .summary {
+            font-size: 16px;
+            font-weight: bold;
+            background: #eef;
+            padding: 10px;
+            border: 1px solid #ddf;
+            border-radius: 4px;
+        }
+        .api-link {
+            font-size: 12px;
+            margin-top: 20px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h2>Keterangan Metrik</h2>
+    <div class='legend'>
+        <ul>
+            <li><b>Impressions</b>: Jumlah wajah terdeteksi pada window berjalan.</li>
+            <li><b>Views</b>: Dihitung saat wajah terdeteksi terus-menerus ≥ ambang dwell.</li>
+            <li><b>View Rate</b>: Views / Impressions pada window (0..1).</li>
+            <li><b>Avg Dwell</b>: Rata-rata durasi tatap (detik) pada window.</li>
+            <li><b>Age Dist</b>: Distribusi usia (akan <i>unknown</i> jika model tidak aktif).</li>
+            <li><b>Expr Dist</b>: Distribusi ekspresi sederhana (smile/neutral/unknown).</li>
+        </ul>
+        <p class='summary'>
+            Total Hari Ini: {{ today.impressions }} impressions | {{ today.views }} views | {{ "%.4f"|format(today.view_rate) }} view rate
+        </p>
+    </div>
+
+    <h2>Window Saat Ini</h2>
+    <table>
+        <tr>
+            <th>Timestamp</th><th>Elapsed (s)</th><th>Impr.</th><th>Views</th><th>View Rate</th><th>Avg Dwell</th><th>Age Dist.</th><th>Expr. Dist.</th>
+        </tr>
+        <tr>
+            <td>{{ current.ts }}</td>
+            <td>{{ current.window_sec }}</td>
+            <td>{{ current.impressions }}</td>
+            <td>{{ current.views }}</td>
+            <td>{{ "%.4f"|format(current.view_rate) }}</td>
+            <td>{{ "%.3f"|format(current.avg_dwell) }}</td>
+            <td>{{ current.age_dist }}</td>
+            <td>{{ current.expr_dist }}</td>
+        </tr>
+    </table>
+
+    <h2>Riwayat Snapshot ({{ history|length }} terakhir)</h2>
+    <table>
+        <tr>
+            <th>Timestamp</th><th>Window (s)</th><th>Impr.</th><th>Views</th><th>Avg Dwell</th><th>Age Dist.</th><th>Expr. Dist.</th>
+        </tr>
+        {% for snap in history %}
+        <tr>
+            <td>{{ snap.ts }}</td>
+            <td>{{ snap.window_sec }}</td>
+            <td>{{ snap.impressions }}</td>
+            <td>{{ snap.views }}</td>
+            <td>{{ "%.3f"|format(snap.avg_dwell) }}</td>
+            <td>{{ snap.age_dist }}</td>
+            <td>{{ snap.expr_dist }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <p class="api-link">JSON API: <a href='/metrics'>/metrics</a></p>
+</body>
+</html>
