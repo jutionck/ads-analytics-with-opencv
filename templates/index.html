@@ -3,6 +3,7 @@
     <meta charset='utf-8'>
     <title>Ads Analytics – Report</title>
     <meta http-equiv='refresh' content='{{ refresh_ms / 1000 }}'>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -10,56 +11,150 @@
             background: #fdfdfd;
             color: #333;
         }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .chart-container {
+            flex: 1 1 45%;
+            min-width: 300px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .metrics-grid {
+            flex: 1 1 100%;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0 5px 0;
+        }
+        .metric-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
         table {
             border-collapse: collapse;
             width: 100%;
             margin-bottom: 20px;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         th, td {
             border: 1px solid #ddd;
-            padding: 8px;
+            padding: 12px;
             text-align: left;
         }
         th {
-            background: #f5f5f5;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             font-weight: bold;
         }
         h2 {
-            border-bottom: 2px solid #eee;
-            padding-bottom: 8px;
-            margin-top: 25px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 30px;
+            color: #333;
         }
         .legend {
             font-size: 14px;
-            background: #fafafa;
-            padding: 12px;
-            border: 1px solid #eee;
-            margin: 8px 0 20px 0;
-            border-radius: 4px;
+            background: linear-gradient(135deg, #fafafa 0%, #f0f2f5 100%);
+            padding: 20px;
+            border: 1px solid #e0e6ed;
+            margin: 15px 0 25px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
         .legend ul {
             padding-left: 20px;
             list-style-type: square;
         }
         .legend b {
-            color: #111;
+            color: #667eea;
         }
         .summary {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: bold;
-            background: #eef;
-            padding: 10px;
-            border: 1px solid #ddf;
-            border-radius: 4px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-top: 15px;
         }
         .api-link {
             font-size: 12px;
-            margin-top: 20px;
+            margin-top: 30px;
             color: #555;
+            text-align: center;
+        }
+        canvas {
+            max-height: 300px;
         }
     </style>
 </head>
 <body>
+    <h2>Ads Analytics Dashboard</h2>
+    
+    <!-- Metrics Cards -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-value">{{ today.impressions }}</div>
+            <div class="metric-label">Total Impressions Hari Ini</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ today.views }}</div>
+            <div class="metric-label">Total Views Hari Ini</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ "%.2f"|format(today.view_rate * 100) }}%</div>
+            <div class="metric-label">View Rate Hari Ini</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ "%.1f"|format(current.avg_dwell) }}s</div>
+            <div class="metric-label">Avg Dwell Time</div>
+        </div>
+    </div>
+
+    <!-- Charts Container -->
+    <div class="container">
+        <!-- Real-time Metrics Chart -->
+        <div class="chart-container">
+            <canvas id="realTimeChart"></canvas>
+        </div>
+        
+        <!-- View Rate Trend -->
+        <div class="chart-container">
+            <canvas id="viewRateChart"></canvas>
+        </div>
+        
+        <!-- Age Distribution -->
+        <div class="chart-container">
+            <canvas id="ageChart"></canvas>
+        </div>
+        
+        <!-- Expression Distribution -->
+        <div class="chart-container">
+            <canvas id="expressionChart"></canvas>
+        </div>
+    </div>
+
     <h2>Keterangan Metrik</h2>
     <div class='legend'>
         <ul>
@@ -70,9 +165,6 @@
             <li><b>Age Dist</b>: Distribusi usia (akan <i>unknown</i> jika model tidak aktif).</li>
             <li><b>Expr Dist</b>: Distribusi ekspresi sederhana (smile/neutral/unknown).</li>
         </ul>
-        <p class='summary'>
-            Total Hari Ini: {{ today.impressions }} impressions | {{ today.views }} views | {{ "%.4f"|format(today.view_rate) }} view rate
-        </p>
     </div>
 
     <h2>Window Saat Ini</h2>
@@ -109,6 +201,118 @@
         </tr>
         {% endfor %}
     </table>
+
+    <script>
+        // Data preparation
+        const historyData = {{ history | tojson }};
+        const currentData = {{ current | tojson }};
+        
+        // Real-time Metrics Chart
+        const realTimeCtx = document.getElementById('realTimeChart').getContext('2d');
+        new Chart(realTimeCtx, {
+            type: 'line',
+            data: {
+                labels: historyData.slice(-10).map(d => new Date(d.ts * 1000).toLocaleTimeString()),
+                datasets: [{
+                    label: 'Impressions',
+                    data: historyData.slice(-10).map(d => d.impressions),
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }, {
+                    label: 'Views',
+                    data: historyData.slice(-10).map(d => d.views),
+                    borderColor: '#764ba2',
+                    backgroundColor: 'rgba(118, 75, 162, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Real-time Impressions & Views' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // View Rate Trend
+        const viewRateCtx = document.getElementById('viewRateChart').getContext('2d');
+        new Chart(viewRateCtx, {
+            type: 'bar',
+            data: {
+                labels: historyData.slice(-8).map(d => new Date(d.ts * 1000).toLocaleTimeString()),
+                datasets: [{
+                    label: 'View Rate (%)',
+                    data: historyData.slice(-8).map(d => (d.view_rate * 100).toFixed(2)),
+                    backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                    borderColor: '#667eea',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'View Rate Trend' }
+                },
+                scales: {
+                    y: { 
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { callback: function(value) { return value + '%'; } }
+                    }
+                }
+            }
+        });
+
+        // Age Distribution
+        const ageDistData = currentData.age_dist || {};
+        const ageCtx = document.getElementById('ageChart').getContext('2d');
+        new Chart(ageCtx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(ageDistData).filter(key => ageDistData[key] > 0),
+                datasets: [{
+                    data: Object.values(ageDistData).filter(val => val > 0),
+                    backgroundColor: [
+                        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Age Distribution (Current Window)' },
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+
+        // Expression Distribution
+        const exprDistData = currentData.expr_dist || {};
+        const exprCtx = document.getElementById('expressionChart').getContext('2d');
+        new Chart(exprCtx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(exprDistData).filter(key => exprDistData[key] > 0),
+                datasets: [{
+                    data: Object.values(exprDistData).filter(val => val > 0),
+                    backgroundColor: ['#4CAF50', '#FFC107', '#FF5722']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Expression Distribution (Current Window)' },
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    </script>
 
     <p class="api-link">JSON API: <a href='/metrics'>/metrics</a></p>
 </body>
