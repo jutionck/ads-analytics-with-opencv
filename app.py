@@ -654,6 +654,13 @@ class VideoSource(FrameSource):
     def read(self) -> Tuple[bool, np.ndarray]: return self.cap.read()
     def release(self): self.cap.release()
 
+class NVRSource(FrameSource):
+    def __init__(self, url: str):
+        self.cap = cv2.VideoCapture(url)
+        if not self.cap.isOpened(): raise RuntimeError(f"Tidak dapat terhubung ke NVR di URL: {url}")
+    def read(self) -> Tuple[bool, np.ndarray]: return self.cap.read()
+    def release(self): self.cap.release()
+
 class SyntheticSource(FrameSource):
     def __init__(self, w: int = 1280, h: int = 720, n: int = 2, crowd_mode: bool = False):
         self.w, self.h, self.n = w, h, n
@@ -966,19 +973,37 @@ def setup_source(args: argparse.Namespace) -> FrameSource:
     ensure_cascades_loaded()
     crowd_mode = args.crowd_mode or args.environment in ["mall", "transit"]
     
-    if args.video: return VideoSource(args.video)
-    if args.synthetic: return SyntheticSource(n=args.synthetic_crowd, crowd_mode=crowd_mode)
+    if args.nvr_url:
+        print(f"[INFO] Mencoba terhubung ke NVR di: {args.nvr_url}")
+        try:
+            return NVRSource(args.nvr_url)
+        except RuntimeError as e:
+            print(f"[FATAL] Gagal terhubung ke NVR: {e}")
+            sys.exit(1)
+
+    if args.video: 
+        print(f"[INFO] Membuka file video: {args.video}")
+        return VideoSource(args.video)
+
+    if args.synthetic: 
+        crowd_desc = "crowd mode" if crowd_mode else "normal mode"
+        print(f"[INFO] Menggunakan sumber sintetis dengan {args.synthetic_crowd} wajah ({crowd_desc}).")
+        return SyntheticSource(n=args.synthetic_crowd, crowd_mode=crowd_mode)
+    
+    # Fallback to camera
     try:
+        print(f"[INFO] Mencoba membuka kamera indeks: {args.camera_index}")
         return CameraSource(args.camera_index)
     except RuntimeError as e:
         print(f"[WARN] Gagal membuka kamera indeks {args.camera_index}: {e}")
         available_cams = list_available_cameras(DEFAULT_PROBE_MAX)
         if available_cams:
-            print(f"[INFO] Kamera ditemukan di indeks {available_cams[0]}, menggunakan itu.")
-            return CameraSource(available_cams[0])
+            print(f"[INFO] Kamera tersedia ditemukan di indeks {available_cams[0]}, menggunakan itu.")
+            args.camera_index = available_cams[0]
+            return CameraSource(args.camera_index)
         else:
             crowd_desc = "crowd mode" if crowd_mode else "normal mode"
-            print(f"[WARN] Tidak ada kamera ditemukan. Beralih ke mode sintetis dengan {args.synthetic_crowd} wajah ({crowd_desc}).")
+            print(f"[WARN] Tidak ada kamera fisik ditemukan. Beralih ke mode sintetis dengan {args.synthetic_crowd} wajah ({crowd_desc}).")
             return SyntheticSource(n=args.synthetic_crowd, crowd_mode=crowd_mode)
 
 def setup_age_estimator(args: argparse.Namespace) -> Optional[AgeEstimator]:
@@ -1024,12 +1049,18 @@ def run_tests():
 def main():
     parser = argparse.ArgumentParser(
         description="Ads Audience Analytics - Purwarupa Klien Edge",
-        epilog="Contoh: python3 app.py --no-window --api-endpoint http://127.0.0.1:5000/api/metrics --location-id TOKO_001"
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog="Contoh penggunaan:\n"
+               "  - Kamera IP/NVR: python3 app.py --nvr-url rtsp://user:pass@192.168.1.1/stream1\n"
+               "  - File video:    python3 app.py --video path/to/video.mp4\n"
+               "  - Kamera lokal:  python3 app.py --camera-index 0\n"
+               "  - Headless & API: python3 app.py --nvr-url ... --no-window --api-endpoint <URL> --location-id <ID>"
     )
-    parser.add_argument("--camera-index", type=int, default=0, help="Indeks kamera.")
-    parser.add_argument("--video", type=str, help="Path ke file video.")
-    parser.add_argument("--synthetic", action="store_true", help="Gunakan sumber data sintetis.")
-    parser.add_argument("--synthetic-crowd", type=int, default=3, help="Jumlah wajah sintetis (default: 3)")
+    parser.add_argument("--nvr-url", type=str, help="URL stream dari NVR atau kamera IP (prioritas tertinggi).")
+    parser.add_argument("--video", type=str, help="Path ke file video untuk diproses (prioritas kedua).")
+    parser.add_argument("--camera-index", type=int, default=0, help="Indeks kamera lokal (prioritas ketiga).")
+    parser.add_argument("--synthetic", action="store_true", help="Gunakan sumber data sintetis (prioritas terendah).")
+    parser.add_argument("--synthetic-crowd", type=int, default=3, help="Jumlah wajah sintetis.")
     parser.add_argument("--list-cams", action="store_true", help="Tampilkan daftar kamera yang tersedia lalu keluar.")
     parser.add_argument("--no-window", action="store_true", help="Jalankan tanpa jendela video (headless).")
     parser.add_argument("--window-sec", type=int, default=DEFAULT_WINDOW_SEC, help=f"Jendela agregasi (detik, default: {DEFAULT_WINDOW_SEC})")
