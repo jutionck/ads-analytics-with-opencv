@@ -215,6 +215,8 @@ class Track:
     is_human: bool = True  # Validated as human face
     gaze_direction: str = "unknown"  # "looking", "away", "unknown"
     validation_score: float = 1.0  # Confidence that this is a human face
+    age: str = AGE_UNKNOWN
+    gender: str = GENDER_UNKNOWN
 
     def update(self, box: Tuple[int,int,int,int]):
         self.box = box
@@ -815,6 +817,10 @@ def process_frame_metrics(tracks: List[Track], frame: np.ndarray, metrics: Metri
                     age = heuristic_age
                 if gender == GENDER_UNKNOWN:
                     gender = heuristic_gender
+            
+            # Simpan hasil demografi ke track untuk ditampilkan
+            tr.age = age
+            tr.gender = gender
                     
             metrics.add_demographics(age, expr, gender)
 
@@ -822,19 +828,32 @@ def draw_overlays(frame: np.ndarray, tracks: List[Track]):
     for tr in tracks:
         x, y, w, h = tr.box
         
-        # Color coding based on human validation and gaze direction
+        # Default label and color
+        color = (128, 128, 128)
+        label = "UNKNOWN"
+
         if not tr.is_human:
             color = (0, 0, 255)  # Red for non-human detections
             label = "NOT HUMAN"
-        elif tr.gaze_direction == "looking":
-            color = (0, 255, 0)  # Green for humans looking at camera
-            label = "LOOKING"
-        elif tr.gaze_direction == "away":
-            color = (0, 165, 255)  # Orange for humans looking away
-            label = "AWAY"
         else:
-            color = (128, 128, 128)  # Gray for unknown gaze
-            label = "UNKNOWN"
+            # Build label for humans
+            gender_label = tr.gender.upper() if tr.gender != GENDER_UNKNOWN else ""
+            age_label = tr.age if tr.age != AGE_UNKNOWN else ""
+            
+            if gender_label and age_label:
+                label = f"{gender_label} ({age_label})"
+            elif gender_label:
+                label = gender_label
+            elif age_label:
+                label = age_label
+            else: # Fallback to gaze direction if no demographics
+                label = tr.gaze_direction.upper()
+
+            # Set color based on gaze
+            if tr.gaze_direction == "looking":
+                color = (0, 255, 0)
+            elif tr.gaze_direction == "away":
+                color = (0, 165, 255)
         
         # Draw bounding box
         thickness = 3 if tr.is_looking else 2
